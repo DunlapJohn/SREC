@@ -42,6 +42,7 @@ while i < length:
     api_base_url = f"https://api.legiscan.com/?key={APIKEY}&op=getMasterList&state={STATE}"
     url_address = f"{api_base_url}"  
     r = requests.get(url=url_address, headers=headers)
+    print(r.status_code)
     j = r.json()
     print(j.keys())
     df = pd.DataFrame(j['masterlist'])
@@ -70,6 +71,7 @@ while i < length:
     sponsors  =[]
     support_level =[]
     opp_level =[]
+    total_count=[]
     while i < length:
         api_base_url=f"https://api.legiscan.com/?key={APIKEY}&op=getBill&id={BILL_ID[i]}"
         url_address = f"{api_base_url}"  
@@ -88,12 +90,14 @@ while i < length:
             nay=(b['nay'])
             support=(yea/total).mean()
             opp=(nay/total).mean()
+            total=total.sum()
             sponsors_frame[1]=(support)
             sponsors_frame[2]=(opp)
+            sponsors_frame[3]=(total)
         else:
             sponsors_frame[1] = 0
             sponsors_frame[2] = 0
-            
+            sponsors_frame[3]=(0)
 
 
 
@@ -103,6 +107,8 @@ while i < length:
              support_level.append(x)
         for x in sponsors_frame[2]:
              opp_level.append(x)
+        for x in sponsors_frame[3]:
+             total_count.append(x)
         # for y in sponsors_support:
         #      support.append(y)
              
@@ -118,15 +124,26 @@ while i < length:
 
     support_level =pd.DataFrame(support_level)
     support_level.rename(columns = {0:f'AVG {STATE} Bill Support'}, inplace = True)
+    
     opp_level =pd.DataFrame(opp_level)
     opp_level.rename(columns = {0:f'AVG {STATE} Bill Opposition'}, inplace = True)
     
+    total_count =pd.DataFrame(total_count)
+    total_count.rename(columns = {0:f'Total {STATE} Bill Votes'}, inplace = True)
+    
     support_level=pd.concat([support_level, sponsors], axis=1)
     support_level=pd.concat([support_level, opp_level], axis=1)
+    support_level=pd.concat([support_level, total_count], axis=1)
+    
     support_level[f'Number of {STATE} Bill CSV Sponsorships']= support_level[f'{STATE} Bill Sponsors'].map(sponsors[f'{STATE} Bill Sponsors'].value_counts())
 
-    support_level=support_level.groupby([f'{STATE} Bill Sponsors'])[f'AVG {STATE} Bill Support',f'AVG {STATE} Bill Opposition',f'Number of {STATE} Bill CSV Sponsorships'].mean()
+    support_level=support_level.groupby([f'{STATE} Bill Sponsors'])[f'AVG {STATE} Bill Support',f'AVG {STATE} Bill Opposition',f'Number of {STATE} Bill CSV Sponsorships',f'Total {STATE} Bill Votes'].mean()
     support_level =pd.DataFrame(support_level)
+    
+    support_level[f'Total Vote {STATE} Bill Opposition'] = support_level[f'Total {STATE} Bill Votes']*support_level[f'AVG {STATE} Bill Opposition']
+    support_level[f'Total Vote {STATE} Bill Support'] = support_level[f'Total {STATE} Bill Votes']*support_level[f'AVG {STATE} Bill Support']
+    
+
     support_level=support_level.sort_values(by=f'AVG {STATE} Bill Support')
     support_level=support_level.reset_index()
 
@@ -134,21 +151,47 @@ while i < length:
 
 
 
-fig = go.Figure([
-    go.Bar(name='Support',
-        x=support_level[f'{STATE} Bill Sponsors'],
-        y=(support_level[f'AVG {STATE} Bill Support']),
-    ),
-    go.Bar(name='Opposition',
+# Figs
+
+
+fig1 = go.Figure()
+fig1.add_trace(go.Bar(name='AVG Support',
+    x=support_level[f'{STATE} Bill Sponsors'],
+    y=(support_level[f'AVG {STATE} Bill Support']), 
+    ),)
+fig1.add_trace(go.Bar(name='AVG Opposition',
     x=support_level[f'{STATE} Bill Sponsors'],
     y=(support_level[f'AVG {STATE} Bill Opposition'])*-1,
-    )
-])
+    ),)
+fig1.update_layout( title_text="Double Y Axis Example")
+fig1.update_xaxes(title_text="xaxis title")
+fig1.update_yaxes(title_text="<b>AVG Sentiment</b>")
+fig1.update_layout(title_text=f"{STATE} Assembly's AVG Sentiment Recorded all for Sponsered Bills Related to CSV")
+st.plotly_chart(fig1, use_container_width=True)
 
-fig.update_layout(title_text=f"{STATE} Bill Sponsor's Performance Derivived from Keyword CSV")
 
 
-st.plotly_chart(fig, use_container_width=True)
+support_level=support_level.sort_values(by=f'Total Vote {STATE} Bill Support')
+
+fig2 = go.Figure()
+fig2.add_trace(
+    go.Bar(name='Total Support',
+    x=support_level[f'{STATE} Bill Sponsors'],
+    y=(support_level[f'Total Vote {STATE} Bill Support']), 
+    ),)
+fig2.add_trace(
+    go.Bar(name='Total Opposition',
+    x=support_level[f'{STATE} Bill Sponsors'],
+    y=(support_level[f'Total Vote {STATE} Bill Opposition'])*-1,
+    ),)
+fig2.update_layout(title_text="Double Y Axis Example")
+fig2.update_xaxes(title_text="xaxis title")
+fig2.update_yaxes(title_text="<b>Number of Votes </b>")
+fig2.update_layout(title_text=f"{STATE} Assembly's Number of Votes Recorded for all Sponsered Bills Related to CSV")
+st.plotly_chart(fig2, use_container_width=True)
+
+
+
 
 @st.cache
 def convert_df(support_level):
@@ -160,11 +203,12 @@ csv = convert_df(support_level)
 st.download_button(
      label="Download Current Dataframe",
      data=csv,
-     file_name=f'{STATE} dataframe -Dunlap.csv',
+     file_name=f'{STATE}_CSV_Bill_Sponsor_dataframe_Jack Dunlap.csv',
      mime='text/csv',
  )
 
 support_level= pd.DataFrame(support_level)
    
 st.table(support_level)
+
 
